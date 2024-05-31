@@ -1,3 +1,86 @@
+from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 # Create your models here.
+from api.utils.constants import PLATFORM_CHOICES, RANK_CHOICES, REGION_CHOICES, TIER_CHOICES, PLATFORM_TO_REGION
+
+class User(AbstractUser):
+    # Override user model for future use, just in case.
+    # See: https://docs.djangoproject.com/en/4.0/topics/auth/customizing/#using-a-custom-user-model-when-starting-a-project
+    pass
+
+
+class Player(models.Model):
+    """Defines a League of Legends summoner. Contains it's name, ranked stats, etc..."""
+
+    name = models.CharField(max_length=24)
+    tag = models.CharField(max_length=10)
+    avatar_id = models.CharField(max_length=24, default="")
+    puuid = models.CharField(max_length=100, default="")
+    summoner_id = models.CharField(max_length=100, default="")
+    account_id = models.CharField(max_length=100, default="")
+    region = models.CharField(max_length=10, default="europes", choices=REGION_CHOICES)
+    platform = models.CharField(max_length=10, default="euw1", choices=PLATFORM_CHOICES)
+    last_data_update = models.DateTimeField(default=timezone.now)
+    # Ranked data
+    tier = models.CharField(max_length=100, default="UNRANKED", choices=TIER_CHOICES)
+    rank = models.CharField(max_length=5, default="NONE", choices=RANK_CHOICES)
+    lp = models.IntegerField(default=0, verbose_name="LP")
+    wins = models.IntegerField(default=0)
+    losses = models.IntegerField(default=0)
+    winrate = models.FloatField(default=0)
+    streak = models.IntegerField(default=0)
+    absolute_lp = models.IntegerField(default=0)
+    last_ranked_update = models.DateTimeField(default=timezone.now)  # mostly for debugging
+
+    @classmethod
+    def create(cls, name : str, platform : str, avatar_id : str=""):
+        res = cls(
+            name=name,
+            platform=platform,
+            region=PLATFORM_TO_REGION[platform.lower()],
+            avatar_id=avatar_id,
+        )
+        return res
+
+    def __str__(self):  # For admin panel aesthetics
+        return self.name
+
+
+class Ladder(models.Model):
+    """Defines a Ladder in which players compete.
+    Can be either absolute (highest ranked player wins), or relative (player that climbed the most wins)"""
+
+    name = models.CharField(max_length=100)
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    is_absolute = models.BooleanField()
+    last_access_date = models.DateTimeField(default=timezone.now)  # Debugging
+    ignore_unranked = models.BooleanField(default=True)
+
+
+class Ladder_Player(models.Model):
+    """Defines the relation between a player and a ladder,
+    since the support of relative ladders makes it so an user can have a different amount of points in multiple ladders"""
+
+    # Foreign keys to relate a ladder and a player
+    player_id = models.ForeignKey(Player, on_delete=models.CASCADE)
+    ladder_id = models.ForeignKey(Ladder, on_delete=models.CASCADE)
+    # Starting state and settings.
+    starting_rank = models.CharField(max_length=20, choices=RANK_CHOICES)
+    starting_tier = models.CharField(
+        max_length=30, choices=TIER_CHOICES
+    )  # Doesn't use ChoiceField for now since this has to be updated programmatically.
+    starting_lp = models.IntegerField()
+    ignored = models.BooleanField(default=False)
+    # Current state of the player
+    progress = models.IntegerField(default=0)
+    progress_delta = models.IntegerField(default=0)
+    last_update = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):  # For admin panel aesthetics
+        return f"{self.ladder_id.id}-{self.player_id.name}"
+
+    class Meta:
+        indexes = [models.Index(fields=["player_id", "ladder_id"])]
