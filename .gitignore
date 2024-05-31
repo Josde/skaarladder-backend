@@ -165,3 +165,5 @@ logs/
 static/
 db.sqlite3
 Pipfile.lock
+
+skaarladder/settings/local.py
